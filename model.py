@@ -8,12 +8,18 @@ class NeRF(nn.Module):
         L_position=10,
         L_direction=4,
         hidden_dim=256,
+        include_input_xyz=True,
+        include_input_dir=True,
     ):
         super(NeRF, self).__init__()
         self.L_pos = L_position
         self.L_dir = L_direction
-        self.input_dim_pos = 6 * self.L_pos
-        self.input_dim_dir = 6 * self.L_dir
+        self.input_dim_pos = (
+            3 * (2 * self.L_pos + 1) if include_input_xyz else 6 * self.L_pos
+        )
+        self.input_dim_dir = (
+            3 * (2 * self.L_dir + 1) if include_input_dir else 6 * self.L_dir
+        )
         self.hidden_dim = hidden_dim
         self.output_dim = 4
         self.net_1 = nn.Sequential(
@@ -34,6 +40,7 @@ class NeRF(nn.Module):
             nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.ReLU(),
             nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.ReLU(),
         )
         self.density = nn.Sequential(
             nn.Linear(self.hidden_dim, 1),
@@ -70,8 +77,8 @@ class ReplicateNeRFModel(torch.nn.Module):
         num_layers=4,
         num_encoding_fn_xyz=10,
         num_encoding_fn_dir=4,
-        include_input_xyz=False,
-        include_input_dir=False,
+        include_input_xyz=True,
+        include_input_dir=True,
     ):
         super(ReplicateNeRFModel, self).__init__()
         # xyz_encoding_dims = 3 + 3 * 2 * num_encoding_functions
@@ -87,6 +94,7 @@ class ReplicateNeRFModel(torch.nn.Module):
         self.layer4 = torch.nn.Linear(hidden_size + self.dim_dir, hidden_size // 2)
         self.layer5 = torch.nn.Linear(hidden_size // 2, hidden_size // 2)
         self.fc_rgb = torch.nn.Linear(hidden_size // 2, 3)
+        self.sigmoid = torch.nn.Sigmoid()
         self.relu = torch.nn.functional.relu
 
     def forward(self, x):
@@ -98,4 +106,5 @@ class ReplicateNeRFModel(torch.nn.Module):
         y_ = self.relu(self.layer4(torch.cat((feat, direction), dim=-1)))
         y_ = self.relu(self.layer5(y_))
         rgb = self.fc_rgb(y_)
+        rgb = self.sigmoid(rgb)
         return alpha, rgb
