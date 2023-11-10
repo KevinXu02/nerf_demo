@@ -98,17 +98,17 @@ def train(
 
 def train_coarse_to_fine(
     num_iterations=5000,
-    start_iter=500,
+    start_iter=1000,
     n_samples=64,
     ray_num=2000,
     log_freq=500,
-    trian_existing_model=False,
+    trian_existing_model=True,
     img_dir="./img/",
-    model_path="./saved_models",
-    learning_rate=1e-4,
+    model_path="./saved_models/",
+    learning_rate=5e-5,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    images_train, c2ws_train, _, _, _, focal = data_loader()
+    images_train, c2ws_train, images_val, c2ws_val, c2ws_test, focal = data_loader()
     K = get_intrinsic_matrix(focal, images_train.shape[1], images_train.shape[2])
     dataset = RaysData(images_train, K, c2ws_train, focal)
     coarse_model = NeRF().to(device)
@@ -132,7 +132,6 @@ def train_coarse_to_fine(
     optimizer = torch.optim.Adam(
         parms,
         lr=learning_rate,
-        weight_decay=5e-5,
         betas=(0.9, 0.999),
     )
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
@@ -205,7 +204,7 @@ def train_coarse_to_fine(
             coarse_img, fine_img = render_img(
                 coarse_model,
                 fine_model=fine_model,
-                c2w=c2ws_train[0],
+                c2w=c2ws_val[0],
                 K=K,
                 H=200,
                 W=200,

@@ -340,7 +340,7 @@ def pos_encoding(x, L, include_input=True):
 
 
 @torch.no_grad()
-def render_img(coarse_model, c2w, H, W, K, chunk=1024, fine_model=None, n_samples=64):
+def render_img(coarse_model, c2w, H, W, K, chunk=512, fine_model=None, n_samples=64):
     # Compute ray origins and directions for each pixel in the image
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
