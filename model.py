@@ -43,12 +43,15 @@ class NeRF(nn.Module):
             nn.ReLU(),
         )
         self.density = nn.Sequential(
-            nn.Linear(self.hidden_dim, 1),
+            nn.Linear(self.hidden_dim, self.hidden_dim // 2),
+            nn.Linear(self.hidden_dim // 2, 1),
             nn.ReLU(),
         )
         self.linear1 = nn.Linear(self.hidden_dim, self.hidden_dim)
         self.color = nn.Sequential(
             nn.Linear(self.hidden_dim + self.input_dim_dir, self.hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(self.hidden_dim // 2, self.hidden_dim // 2),
             nn.ReLU(),
             nn.Linear(self.hidden_dim // 2, 3),
             nn.Sigmoid(),
@@ -60,8 +63,7 @@ class NeRF(nn.Module):
         out1 = torch.cat([out1, xyz], dim=-1)
         out2 = self.net_2(out1)
         alpha = self.density(out2)
-        out3 = self.linear1(out2)
-        out3 = torch.cat([out3, rd], dim=-1)
+        out3 = torch.cat([out2, rd], dim=-1)
         rgb = self.color(out3)
         return alpha, rgb
 

@@ -23,19 +23,21 @@ class RaysData(Dataset):
         self.focal = focal
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def sample_rays(self, N):
+    def sample_rays(self, N, mask_black=True):
         # sample rays from image
         # N the number of rays
         # pixels is the color of the pixels, Nx3
         # rays_o is the origin of the rays Nx3
         # rays_d is the direction of the rays Nx3
         n_samples_per_img = N // self.num_img
+
         rays_o = []
         rays_d = []
         pixels = []
         c2ws = torch.from_numpy(self.c2ws_train).float()
         images = torch.from_numpy(self.images_train)
         for c2w, image in zip(c2ws, images):
+            # mask all the black pixels
             rays_o_c, rays_d_c = get_rays_full_image_torch(
                 self.H, self.W, self.focal, c2w
             )
@@ -48,3 +50,23 @@ class RaysData(Dataset):
         pixels = torch.cat(pixels, dim=0).to(self.device)
 
         return (rays_o, rays_d, pixels)
+
+    # def sample_rays(self, N, mask_black=True):
+    #     # sample rays from image
+    #     # N the number of rays
+    #     # pixels is the color of the pixels, Nx3
+    #     # rays_o is the origin of the rays Nx3
+    #     # rays_d is the direction of the rays Nx3
+    #     n_samples_per_img = N // self.num_img
+    #     indices = (
+    #         torch.rand((N, 3), device=self.device)
+    #         * torch.tensor([self.num_img, self.H, self.W], device=self.device)
+    #     ).long()
+    #     c2ws = torch.from_numpy(self.c2ws_train).float()
+    #     images = torch.from_numpy(self.images_train)
+    #     rays_o, rays_d = get_rays_full_image_torch(
+    #         self.H, self.W, self.focal, c2ws[indices[:, 0]]
+    #     )
+    #     rays_o
+    #     pixels = images[indices[:, 0], indices[:, 1], indices[:, 2]]
+    #     return (rays_o, rays_d, pixels)

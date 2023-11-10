@@ -124,6 +124,9 @@ def sample_t_vals(near=2.0, far=6.0, n_samples=64, perturb=False, batch_size=1):
     t_width = (far - near) / n_samples
     if perturb:
         t = t + torch.rand(batch_size, n_samples) * t_width
+
+    # print the fisrt 2 rows of t
+    # print(t[0:2])
     return t
 
 
@@ -218,9 +221,11 @@ def get_rays_full_image_torch(H, W, focal, c2w):
         torch.arange(H, dtype=torch.float32),
         indexing="xy",
     )
-    c2w = torch.tensor(c2w, dtype=torch.float32)
+    if not isinstance(c2w, torch.Tensor):
+        c2w = torch.from_numpy(c2w).float()
+
     dirs = torch.stack(
-        [(i - W * 0.5) / focal, -(j - H * 0.5) / focal, -torch.ones_like(i)], dim=-1
+        [(i - W * 0.5) / focal, (j - H * 0.5) / focal, torch.ones_like(i)], dim=-1
     )
     rays_d = dirs @ (c2w[:3, :3].t())
     rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
@@ -230,7 +235,7 @@ def get_rays_full_image_torch(H, W, focal, c2w):
     return rays_o.view(-1, 3), rays_d.view(-1, 3)
 
 
-def viser_visualize(images_train, c2ws_train, rays_o, rays_d, points, H, W, K):
+def viser_visualize(images_train, c2ws_train, rays_o, rays_d, points, targets, H, W, K):
     server = viser.ViserServer(share=True)
     for i, (image, c2w) in enumerate(zip(images_train, c2ws_train)):
         server.add_camera_frustum(
@@ -248,38 +253,45 @@ def viser_visualize(images_train, c2ws_train, rays_o, rays_d, points, H, W, K):
             positions=np.stack((o, o + d * 6.0)),
         )
         # visualize rays_o
-        server.add_point_cloud(
-            f"/rays_o/{i}",
-            colors=np.zeros_like(o).reshape(-1, 3),
-            points=o.reshape(-1, 3),
-            point_size=0.02,
-        )
+
     server.add_point_cloud(
         f"/samples",
-        colors=np.zeros_like(points).reshape(-1, 3),
+        colors=targets.reshape(-1, 3),
         points=points.reshape(-1, 3),
         point_size=0.02,
     )
     time.sleep(1000)
 
 
+# def pos_encoding(x, L, include_input=True):
+#     # apply a serious of sinusoidal functions to the input cooridnates, to expand its dimensionality
+#     # pe(x)={x,sin(πx),cos(πx),sin(2^1πx),cos(2^1πx),...,sin(2^(L-1)πx),cos(2^(l-1)πx)}
+#     # x: [N, 3]
+#     # L: int
+#     # return: [N, 6* L]
+#     x_0 = x.unsqueeze(-1)
+#     x = x_0
+#     l = torch.arange(L, dtype=torch.float32, device=x.device)
+#     l = 2**l
+#     x = x * l * torch.pi
+#     x = torch.cat([x.sin(), x.cos()], dim=-1)
+#     if include_input:
+#         x = torch.cat([x_0, x], dim=-1)
+#     # change the type of x to float32
+#     x = x.type(torch.float32)
+#     return x.flatten(-2)
+
+
 def pos_encoding(x, L, include_input=True):
-    # apply a serious of sinusoidal functions to the input cooridnates, to expand its dimensionality
-    # pe(x)={x,sin(πx),cos(πx),sin(2^1πx),cos(2^1πx),...,sin(2^(L-1)πx),cos(2^(l-1)πx)}
-    # x: [N, 3]
-    # L: int
-    # return: [N, 6* L]
-    x_0 = x.unsqueeze(-1)
-    x = x_0
-    l = torch.arange(L, dtype=torch.float32, device=x.device)
-    l = 2**l
-    x = x * l * torch.pi
-    x = torch.cat([x.sin(), x.cos()], dim=-1)
+    embed_fns = []
+    encode_fn = [torch.sin, torch.cos]
     if include_input:
-        x = torch.cat([x_0, x], dim=-1)
-    # change the type of x to float32
-    x = x.type(torch.float32)
-    return x.flatten(-2)
+        embed_fns.append(lambda x: x)
+    for res in range(L):
+        res = 2**res
+        for fn in encode_fn:
+            embed_fns.append(lambda x, fn_=fn, res_=res: fn_(res_ * x))
+    return torch.cat([fn(x) for fn in embed_fns], dim=-1)
 
 
 # @torch.no_grad()
