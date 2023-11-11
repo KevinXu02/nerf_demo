@@ -98,14 +98,14 @@ def train(
 
 def train_coarse_to_fine(
     num_iterations=5000,
-    start_iter=1000,
+    start_iter=0,
     n_samples=64,
     ray_num=2000,
     log_freq=500,
     trian_existing_model=True,
     img_dir="./img/",
     model_path="./saved_models/",
-    learning_rate=5e-5,
+    learning_rate=2e-4,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     images_train, c2ws_train, images_val, c2ws_val, c2ws_test, focal = data_loader()
@@ -115,12 +115,8 @@ def train_coarse_to_fine(
     fine_model = NeRF().to(device)
     if trian_existing_model:
         try:
-            coarse_model.load_state_dict(
-                torch.load(f"{model_path}/coarse_model_{start_iter}.pt")
-            )
-            fine_model.load_state_dict(
-                torch.load(f"{model_path}/fine_model_{start_iter}.pt")
-            )
+            coarse_model.load_state_dict(torch.load(f"saved_models\model_iter_5500.pt"))
+            fine_model.load_state_dict(torch.load(f"saved_models\model_iter_5500.pt"))
             tqdm.write(f"Model loaded from {model_path}")
         except:
             tqdm.write(f"Model not found at {model_path}")
@@ -134,7 +130,7 @@ def train_coarse_to_fine(
         lr=learning_rate,
         betas=(0.9, 0.999),
     )
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.5)
     loss_fn = nn.MSELoss()
     avg_loss = {fine_model: 0, coarse_model: 0}
     for iter in tqdm(range(start_iter, start_iter + num_iterations)):

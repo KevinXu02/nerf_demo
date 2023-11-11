@@ -184,14 +184,18 @@ def volrend(sigmas, rgbs, step_size, white_bkgd=False):
     # return: weights: Nxn_samples tensor
     sigmas = sigmas.squeeze()
     if white_bkgd:
-        sigmas = torch.cat([sigmas, torch.ones_like(sigmas[:, :1])], dim=-1)
-        rgbs = torch.cat([rgbs, torch.zeros_like(rgbs[:, :1])], dim=-2)
+        # injection of white background color
+        rgbs = torch.cat([rgbs, torch.ones_like(rgbs[:, :1, :])], dim=1)
+        sigmas = torch.cat([sigmas, 99999 * torch.ones_like(sigmas[:, :1])], dim=1)
+        step_size = torch.cat([step_size, torch.ones_like(step_size[:, :1])], dim=1)
     alpha = 1.0 - torch.exp(-sigmas * step_size)
     alpha = alpha.squeeze()
     T_i = torch.cat([torch.ones_like(alpha[:, :1]), 1.0 - alpha], dim=-1)[:, :-1]
     T_i = torch.cumprod(T_i, dim=-1)
     weights = alpha * T_i
     colors = torch.sum(weights.unsqueeze(-1) * rgbs, dim=-2)
+    if white_bkgd:
+        weights = weights[:, :-1]
     return colors, weights
 
 
@@ -263,84 +267,48 @@ def viser_visualize(images_train, c2ws_train, rays_o, rays_d, points, targets, H
     time.sleep(1000)
 
 
-# def pos_encoding(x, L, include_input=True):
-#     # apply a serious of sinusoidal functions to the input cooridnates, to expand its dimensionality
-#     # pe(x)={x,sin(πx),cos(πx),sin(2^1πx),cos(2^1πx),...,sin(2^(L-1)πx),cos(2^(l-1)πx)}
-#     # x: [N, 3]
-#     # L: int
-#     # return: [N, 6* L]
-#     x_0 = x.unsqueeze(-1)
-#     x = x_0
-#     l = torch.arange(L, dtype=torch.float32, device=x.device)
-#     l = 2**l
-#     x = x * l * torch.pi
-#     x = torch.cat([x.sin(), x.cos()], dim=-1)
-#     if include_input:
-#         x = torch.cat([x_0, x], dim=-1)
-#     # change the type of x to float32
-#     x = x.type(torch.float32)
-#     return x.flatten(-2)
-
-
 def pos_encoding(x, L, include_input=True):
-    embed_fns = []
-    encode_fn = [torch.sin, torch.cos]
+    # apply a serious of sinusoidal functions to the input cooridnates, to expand its dimensionality
+    # pe(x)={x,sin(πx),cos(πx),sin(2^1πx),cos(2^1πx),...,sin(2^(L-1)πx),cos(2^(l-1)πx)}
+    # x: [N, 3]
+    # L: int
+    # return: [N, 6* L]
+    x_0 = x.unsqueeze(-1)
+    x = x_0
+    l = torch.arange(L, dtype=torch.float32, device=x.device)
+    l = 2**l
+    x = x * l * torch.pi
+    x = torch.cat([x.sin(), x.cos()], dim=-1)
     if include_input:
-        embed_fns.append(lambda x: x)
-    for res in range(L):
-        res = 2**res
-        for fn in encode_fn:
-            embed_fns.append(lambda x, fn_=fn, res_=res: fn_(res_ * x))
-    return torch.cat([fn(x) for fn in embed_fns], dim=-1)
+        x = torch.cat([x_0, x], dim=-1)
+    # change the type of x to float32
+    return x.flatten(-2).float()
 
 
-# @torch.no_grad()
-# def render_img(nerf_model, c2w, H, W, K, chunk=1024):
-#     # Compute ray origins and directions for each pixel in the image
-
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     rays_o, rays_d = get_rays_full_image_torch(H, W, K[0, 0], c2w)
-
-#     # print("rays_o.shape", rays_o.shape)
-#     # print("rays_d.shape", rays_d.shape)
-#     # Sample points along each ray
-#     points, step_size = sample_along_rays(rays_o, rays_d, perturb=False, n_samples=64)
-#     # print("step_size", step_size)
-#     # print("11111111points.shape", points.shape)
-#     # print("11111111rays_d.shape", rays_d.shape)
-#     rays_d = torch.tile(rays_d[:, np.newaxis, :], (1, 64, 1))
-#     points = pos_encoding(points, 10).to(device)
-#     rays_d = pos_encoding(rays_d, 4).to(device)
-#     x = torch.cat([points, rays_d], dim=-1)
-#     print("x.shape", x.shape)
-#     # Predict color and opacity of each sampled point using the NeRF model
-#     all_alpha = []
-#     all_rgb = []
-#     for i in range(0, points.shape[0], chunk):
-#         points_chunk = points[i : i + chunk]
-#         rays_d_chunk = rays_d[i : i + chunk]
-#         x_chunk = torch.cat([points_chunk, rays_d_chunk], dim=-1)
-#         alpha_chunk, rgb_chunk = nerf_model(x_chunk)
-#         all_alpha.append(alpha_chunk)
-#         all_rgb.append(rgb_chunk)
-#     alpha = torch.cat(all_alpha, dim=0)
-#     rgb = torch.cat(all_rgb, dim=0)
-#     # Combine colors and opacities into a single image
-#     img = volrend(alpha, rgb, step_size.to(device))
-#     # write image data to local as txt
-#     img = img.reshape(H, W, 3)
-#     # print(img)
-#     img = img * 255
-#     # save the image to local
-#     img = img.detach().cpu().numpy().astype(np.uint8)
-#     img = Image.fromarray(img)
-#     # img.save("./img.png")
-#     # print("img saved to ./img.png")
-#     return img
+# def pos_encoding(x, L, include_input=True):
+#     embed_fns = []
+#     encode_fn = [torch.sin, torch.cos]
+#     if include_input:
+#         embed_fns.append(lambda x: x)
+#     for res in range(L):
+#         res = 2**res
+#         for fn in encode_fn:
+#             embed_fns.append(lambda x, fn_=fn, res_=res: fn_(res_ * x))
+#     return torch.cat([fn(x) for fn in embed_fns], dim=-1)
 
 
 @torch.no_grad()
-def render_img(coarse_model, c2w, H, W, K, chunk=512, fine_model=None, n_samples=64):
+def render_img(
+    coarse_model,
+    c2w,
+    H,
+    W,
+    K,
+    chunk=1024,
+    fine_model=None,
+    n_samples=64,
+    white_bkgd=False,
+):
     # Compute ray origins and directions for each pixel in the image
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -372,7 +340,9 @@ def render_img(coarse_model, c2w, H, W, K, chunk=512, fine_model=None, n_samples
     alpha = torch.cat(all_alpha, dim=0)
     rgb = torch.cat(all_rgb, dim=0)
     # Combine colors and opacities into a single image
-    coarse_img, weights = volrend(alpha, rgb, step_size.to(device))
+    coarse_img, weights = volrend(
+        alpha, rgb, step_size.to(device), white_bkgd=white_bkgd
+    )
     coarse_img = (
         (coarse_img.reshape(H, W, 3) * 255).detach().cpu().numpy().astype(np.uint8)
     )
@@ -387,8 +357,8 @@ def render_img(coarse_model, c2w, H, W, K, chunk=512, fine_model=None, n_samples
             t_mid, weights[..., 1:-1], n_sample=n_samples, perturb=True, device=device
         ).detach()
         t_fine = t_fine.to(t_vals)
-        print("t_fine.shape", t_fine.shape)
-        print("t_vals.shape", t_vals.shape)
+        # print("t_fine.shape", t_fine.shape)
+        # print("t_vals.shape", t_vals.shape)
         t_fine = torch.sort(torch.cat([t_vals, t_fine], dim=-1), dim=-1)[0]
         points_fine, step_size_fine = sample_along_rays(rays_o, rays_d, t_fine)
         points_fine_input = pos_encoding(points_fine, 10).to(device)
@@ -408,53 +378,64 @@ def render_img(coarse_model, c2w, H, W, K, chunk=512, fine_model=None, n_samples
         alpha = torch.cat(all_alpha, dim=0)
         rgb = torch.cat(all_rgb, dim=0)
         # Combine colors and opacities into a single image
-        fine_img, _ = volrend(alpha, rgb, step_size_fine.to(device))
+        fine_img, _ = volrend(
+            alpha, rgb, step_size_fine.to(device), white_bkgd=white_bkgd
+        )
         fine_img = (
             (fine_img.reshape(H, W, 3) * 255).detach().cpu().numpy().astype(np.uint8)
         )
         fine_img = Image.fromarray(fine_img)
-
+        print("image rendered")
     return coarse_img, fine_img
 
 
 @torch.no_grad()
-def render_gif(nerf_model, c2ws, H, W, K, chunk=2048):
+def render_gif(
+    coarse_model, c2ws, H, W, K, chunk=1024, fine_model=None, white_bkgd=False
+):
     # Compute ray origins and directions for each pixel in the image
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # render a set of images and save them as gif
-    imgs = []
+    coarse_imgs = []
+    fine_imgs = []
     for c2w in c2ws:
-        rays_o, rays_d = get_rays_full_image_torch(H, W, K[0, 0], c2w)
-        points, step_size = sample_along_rays(
-            rays_o, rays_d, perturb=False, n_samples=64
-        )
-        rays_d = torch.tile(rays_d[:, np.newaxis, :], (1, 64, 1))
-        points = pos_encoding(points, 10).to(device)
-        rays_d = pos_encoding(rays_d, 4).to(device)
-        # print("x.shape", x.shape)
-        # Predict color and opacity of each sampled point using the NeRF model
-        all_alpha = []
-        all_rgb = []
-        for i in range(0, points.shape[0], chunk):
-            points_chunk = points[i : i + chunk]
-            rays_d_chunk = rays_d[i : i + chunk]
-            x_chunk = torch.cat([points_chunk, rays_d_chunk], dim=-1)
-            alpha_chunk, rgb_chunk = nerf_model(x_chunk)
-            all_alpha.append(alpha_chunk)
-            all_rgb.append(rgb_chunk)
-        alpha = torch.cat(all_alpha, dim=0)
-        rgb = torch.cat(all_rgb, dim=0)
+        if fine_model is None:
+            img = render_img(coarse_model, c2w, H, W, K, chunk, white_bkgd=white_bkgd)
+            coarse_imgs.append(img)
+        else:
+            coarse_img, fine_img = render_img(
+                coarse_model, c2w, H, W, K, chunk, fine_model, white_bkgd=white_bkgd
+            )
+            coarse_imgs.append(coarse_img)
+            fine_imgs.append(fine_img)
+    # save the images to local, if exist, create a new name
+    name_c = "img_coarse_rendered.gif"
+    i = 0
+    while os.path.exists(name_c):
+        name_c = f"img_coarse_rendered_{i}.gif"
+        i += 1
+    #
+    name_f = "img_fine_rendered.gif"
+    i = 0
+    while os.path.exists(name_f):
+        name_f = f"img_fine_rendered_{i}.gif"
+        i += 1
 
-        img = volrend(alpha, rgb, step_size.to(device))
-        img = img.reshape(H, W, 3) * 255
-        img = img.detach().cpu().numpy().astype(np.uint8)
-        img = Image.fromarray(img)
-        imgs.append(img)
-    imgs[0].save(
-        "./img.gif",
+    coarse_imgs[0].save(
+        name_c,
         save_all=True,
-        append_images=imgs[1:],
+        append_images=coarse_imgs[1:],
         duration=100,
         loop=0,
     )
+    print("img_coarse_rendered.gif saved to ./img_coarse_rendered.gif")
+    if fine_model is not None:
+        fine_imgs[0].save(
+            name_f,
+            save_all=True,
+            append_images=fine_imgs[1:],
+            duration=100,
+            loop=0,
+        )
+        print("img_fine_rendered.gif saved to ./img_fine_rendered.gif")
