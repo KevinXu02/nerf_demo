@@ -267,34 +267,34 @@ def viser_visualize(images_train, c2ws_train, rays_o, rays_d, points, targets, H
     time.sleep(1000)
 
 
-def pos_encoding(x, L, include_input=True):
-    # apply a serious of sinusoidal functions to the input cooridnates, to expand its dimensionality
-    # pe(x)={x,sin(πx),cos(πx),sin(2^1πx),cos(2^1πx),...,sin(2^(L-1)πx),cos(2^(l-1)πx)}
-    # x: [N, 3]
-    # L: int
-    # return: [N, 6* L]
-    x_0 = x.unsqueeze(-1)
-    x = x_0
-    l = torch.arange(L, dtype=torch.float32, device=x.device)
-    l = 2**l
-    x = x * l * torch.pi
-    x = torch.cat([x.sin(), x.cos()], dim=-1)
-    if include_input:
-        x = torch.cat([x_0, x], dim=-1)
-    # change the type of x to float32
-    return x.flatten(-2).float()
-
-
 # def pos_encoding(x, L, include_input=True):
-#     embed_fns = []
-#     encode_fn = [torch.sin, torch.cos]
+#     # apply a serious of sinusoidal functions to the input cooridnates, to expand its dimensionality
+#     # pe(x)={x,sin(πx),cos(πx),sin(2^1πx),cos(2^1πx),...,sin(2^(L-1)πx),cos(2^(l-1)πx)}
+#     # x: [N, 3]
+#     # L: int
+#     # return: [N, 6* L]
+#     x_0 = x.unsqueeze(-1)
+#     x = x_0
+#     l = torch.arange(L, dtype=torch.float32, device=x.device)
+#     l = 2**l
+#     x = x * l * torch.pi
+#     x = torch.cat([x.sin(), x.cos()], dim=-1)
 #     if include_input:
-#         embed_fns.append(lambda x: x)
-#     for res in range(L):
-#         res = 2**res
-#         for fn in encode_fn:
-#             embed_fns.append(lambda x, fn_=fn, res_=res: fn_(res_ * x))
-#     return torch.cat([fn(x) for fn in embed_fns], dim=-1)
+#         x = torch.cat([x_0, x], dim=-1)
+#     # change the type of x to float32
+#     return x.flatten(-2).float()
+
+
+def pos_encoding(x, L, include_input=True):
+    embed_fns = []
+    encode_fn = [torch.sin, torch.cos]
+    if include_input:
+        embed_fns.append(lambda x: x)
+    for res in range(L):
+        res = 2**res
+        for fn in encode_fn:
+            embed_fns.append(lambda x, fn_=fn, res_=res: fn_(res_ * x))
+    return torch.cat([fn(x) for fn in embed_fns], dim=-1)
 
 
 @torch.no_grad()
@@ -343,6 +343,10 @@ def render_img(
     coarse_img, weights = volrend(
         alpha, rgb, step_size.to(device), white_bkgd=white_bkgd
     )
+    depth_img = torch.sum(weights * t_vals.to(weights), dim=-1)
+    depth_img = (depth_img.reshape(H, W) * 40).detach().cpu().numpy().astype(np.uint8)
+    depth_img = Image.fromarray(depth_img)
+
     coarse_img = (
         (coarse_img.reshape(H, W, 3) * 255).detach().cpu().numpy().astype(np.uint8)
     )
@@ -350,7 +354,7 @@ def render_img(
 
     # fine model
     if fine_model is None:
-        return coarse_img
+        return coarse_img, depth_img
     else:
         t_mid = (t_vals[..., 1:] + t_vals[..., :-1]) / 2
         t_fine = sample_pdf(
@@ -378,15 +382,20 @@ def render_img(
         alpha = torch.cat(all_alpha, dim=0)
         rgb = torch.cat(all_rgb, dim=0)
         # Combine colors and opacities into a single image
-        fine_img, _ = volrend(
+        fine_img, weights = volrend(
             alpha, rgb, step_size_fine.to(device), white_bkgd=white_bkgd
         )
+        fine_depth_img = torch.sum(weights * t_fine.to(weights), dim=-1)
+        fine_depth_img = (
+            (fine_depth_img.reshape(H, W) * 40).detach().cpu().numpy().astype(np.uint8)
+        )
+        fine_depth_img = Image.fromarray(fine_depth_img)
         fine_img = (
             (fine_img.reshape(H, W, 3) * 255).detach().cpu().numpy().astype(np.uint8)
         )
         fine_img = Image.fromarray(fine_img)
         print("image rendered")
-    return coarse_img, fine_img
+    return coarse_img, fine_img, depth_img, fine_depth_img
 
 
 @torch.no_grad()
@@ -399,16 +408,23 @@ def render_gif(
     # render a set of images and save them as gif
     coarse_imgs = []
     fine_imgs = []
+    depth_imgs = []
+    fine_depth_imgs = []
     for c2w in c2ws:
         if fine_model is None:
-            img = render_img(coarse_model, c2w, H, W, K, chunk, white_bkgd=white_bkgd)
+            img, depth_img = render_img(
+                coarse_model, c2w, H, W, K, chunk, white_bkgd=white_bkgd
+            )
             coarse_imgs.append(img)
+            depth_imgs.append(depth_img)
         else:
-            coarse_img, fine_img = render_img(
+            coarse_img, fine_img, depth_img, fine_depth_img = render_img(
                 coarse_model, c2w, H, W, K, chunk, fine_model, white_bkgd=white_bkgd
             )
             coarse_imgs.append(coarse_img)
             fine_imgs.append(fine_img)
+            depth_imgs.append(depth_img)
+            fine_depth_imgs.append(fine_depth_img)
     # save the images to local, if exist, create a new name
     name_c = "img_coarse_rendered.gif"
     i = 0
@@ -439,3 +455,33 @@ def render_gif(
             loop=0,
         )
         print("img_fine_rendered.gif saved to ./img_fine_rendered.gif")
+
+    # save the depth images to local, if exist, create a new name
+    name_d = "img_depth_rendered.gif"
+    i = 0
+    while os.path.exists(name_d):
+        name_d = f"img_depth_rendered_{i}.gif"
+        i += 1
+    #
+    name_fd = "img_fine_depth_rendered.gif"
+    i = 0
+    while os.path.exists(name_fd):
+        name_fd = f"img_fine_depth_rendered_{i}.gif"
+        i += 1
+    depth_imgs[0].save(
+        name_d,
+        save_all=True,
+        append_images=depth_imgs[1:],
+        duration=100,
+        loop=0,
+    )
+    print("img_depth_rendered.gif saved to ./img_depth_rendered.gif")
+    if fine_model is not None:
+        fine_depth_imgs[0].save(
+            name_fd,
+            save_all=True,
+            append_images=fine_depth_imgs[1:],
+            duration=100,
+            loop=0,
+        )
+        print("img_fine_depth_rendered.gif saved to ./img_fine_depth_rendered.gif")
