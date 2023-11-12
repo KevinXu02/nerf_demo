@@ -131,6 +131,7 @@ def sample_t_vals(near=2.0, far=6.0, n_samples=64, perturb=False, batch_size=1):
 
 
 def sample_pdf(bins, weight, n_sample, device, perturb=True):
+    # this part is borrowed from original nerf code
     """
     -input
     bins=(Batch,Nc-1)

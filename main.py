@@ -1,12 +1,8 @@
-import viser, time  # pip install viser
 import numpy as np
 from data_processing.data_loader import data_loader
 from data_processing.rays import RaysData
-from models.model import NeRF, ReplicateNeRFModel
+from models.model import NeRF
 import torch
-import torch.nn as nn
-import tqdm
-from tqdm import tqdm
 from PIL import Image
 from utils.utils import *
 from utils.train_utils import *
@@ -56,16 +52,16 @@ if __name__ == "__main__":
     img_f.save("./test_img/img_f.png")
     depth.save("./test_img/depth.png")
     depth_fine.save("./test_img/depth_fine.png")
-    render_gif(
-        coarse_model=coarse_model,
-        fine_model=fine_model,
-        c2ws=c2ws_test,
-        H=H,
-        W=W,
-        K=K,
-        chunk=1024,
-        white_bkgd=False,
-    )
+    # render_gif(
+    #     coarse_model=coarse_model,
+    #     fine_model=fine_model,
+    #     c2ws=c2ws_test,
+    #     H=H,
+    #     W=W,
+    #     K=K,
+    #     chunk=1024,
+    #     white_bkgd=False,
+    # )
 
 
 # rays_o, rays_d, target = dataset.sample_rays(500)

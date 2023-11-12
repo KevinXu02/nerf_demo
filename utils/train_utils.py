@@ -2,7 +2,7 @@ import viser, time  # pip install viser
 import numpy as np
 from data_processing.data_loader import data_loader
 from data_processing.rays import RaysData
-from models.model import NeRF, ReplicateNeRFModel
+from models.model import NeRF
 import torch
 import torch.nn as nn
 import tqdm
