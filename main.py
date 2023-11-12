@@ -1,15 +1,15 @@
 import viser, time  # pip install viser
 import numpy as np
-from data import data_loader
-from rays import RaysData
-from model import NeRF, ReplicateNeRFModel
+from data_processing.data_loader import data_loader
+from data_processing.rays import RaysData
+from models.model import NeRF, ReplicateNeRFModel
 import torch
 import torch.nn as nn
 import tqdm
 from tqdm import tqdm
 from PIL import Image
-from utils import *
-from train_utils import *
+from utils.utils import *
+from utils.train_utils import *
 
 
 if __name__ == "__main__":

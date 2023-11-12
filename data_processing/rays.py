@@ -3,11 +3,11 @@ from torch.utils.data import Dataset
 import numpy as np
 
 # from utils import pixel_to_ray
-from utils import get_intrinsic_matrix
-from utils import pixel_to_camera
-from utils import transform
-from utils import sample_along_rays
-from utils import sample_along_rays_np, get_rays_full_image, get_rays_full_image_torch
+from utils.utils import get_intrinsic_matrix
+from utils.utils import pixel_to_camera
+from utils.utils import transform
+from utils.utils import sample_along_rays
+from utils.utils import sample_along_rays_np, get_rays_full_image, get_rays_full_image_torch
 
 # from utils import pixel_to_ray
 

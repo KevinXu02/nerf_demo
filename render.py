@@ -1,9 +1,9 @@
 import viser, time  # pip install viser
 import numpy as np
-from data import data_loader
-from utils import sample_along_rays
-from utils import get_intrinsic_matrix
-from rays import RaysData
+from data_processing.data_loader import data_loader
+from utils.utils import sample_along_rays
+from utils.utils import get_intrinsic_matrix
+from data_processing.rays import RaysData
 
 # --- You Need to Implement These ------
 images_train, c2ws_train, _, _, _, focal = data_loader()
